@@ -871,8 +871,14 @@ def _save_user_contribution_rights(
         can_review_questions=user_contribution_rights.can_review_questions,
         can_submit_questions=user_contribution_rights.can_submit_questions,
     )
-    user_contribution_rights_model.update_timestamps()
-    user_contribution_rights_model.put()
+    # Save via the storage-layer class methods (put_multi), not a direct
+    # instance .put() call, mirroring suggestion_services.update_suggestions.
+    user_models.UserContributionRightsModel.update_timestamps_multi(
+        [user_contribution_rights_model]
+    )
+    user_models.UserContributionRightsModel.put_multi(
+        [user_contribution_rights_model]
+    )
 
 
 def _update_user_contribution_rights(
