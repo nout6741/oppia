@@ -834,6 +834,12 @@ def _save_user_contribution_rights(
 ) -> None:
     """Saves the UserContributionRights object into the datastore.
 
+    If a UserContributionRightsModel already exists for the user, its fields are
+    updated in place so that created_on is preserved; otherwise a new model is
+    created. update_timestamps() is then called and the model is saved through
+    the storage layer, ensuring that created_on and last_updated are set
+    correctly (see suggestion_services.update_suggestions for the same pattern).
+
     Args:
         user_contribution_rights: UserContributionRights. The
             UserContributionRights object of the user.
@@ -844,17 +850,29 @@ def _save_user_contribution_rights(
     _update_reviewer_counts_in_community_contribution_stats(
         user_contribution_rights
     )
-    user_models.UserContributionRightsModel(
-        id=user_contribution_rights.id,
+    user_contribution_rights_model = (
+        user_models.UserContributionRightsModel.get_by_id(
+            user_contribution_rights.id
+        )
+    )
+    if user_contribution_rights_model is None:
+        user_contribution_rights_model = (
+            user_models.UserContributionRightsModel(
+                id=user_contribution_rights.id
+            )
+        )
+    user_contribution_rights_model.populate(
         can_review_translation_for_language_codes=(
             user_contribution_rights.can_review_translation_for_language_codes
         ),
         can_review_voiceover_for_language_codes=(
             user_contribution_rights.can_review_voiceover_for_language_codes
         ),
-        can_review_questions=(user_contribution_rights.can_review_questions),
-        can_submit_questions=(user_contribution_rights.can_submit_questions),
-    ).put()
+        can_review_questions=user_contribution_rights.can_review_questions,
+        can_submit_questions=user_contribution_rights.can_submit_questions,
+    )
+    user_contribution_rights_model.update_timestamps()
+    user_contribution_rights_model.put()
 
 
 def _update_user_contribution_rights(

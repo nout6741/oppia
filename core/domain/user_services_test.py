@@ -4459,6 +4459,79 @@ class UserContributionReviewRightsTests(test_utils.GenericTestBase):
             ['en', 'hi'],
         )
 
+    def test_updating_contribution_rights_preserves_created_on(self) -> None:
+        # Assigning the first review right creates the model.
+        user_services.allow_user_to_review_translation_in_language(
+            self.translator_id, 'hi'
+        )
+        rights_model = user_models.UserContributionRightsModel.get_by_id(
+            self.translator_id
+        )
+        # Ruling out the possibility of None for mypy type checking.
+        assert rights_model is not None
+        initial_created_on = rights_model.created_on
+        initial_last_updated = rights_model.last_updated
+
+        # Updating the rights (adding another language) must not reset
+        # created_on, and should advance last_updated.
+        user_services.allow_user_to_review_translation_in_language(
+            self.translator_id, 'en'
+        )
+        updated_rights_model = (
+            user_models.UserContributionRightsModel.get_by_id(
+                self.translator_id
+            )
+        )
+        # Ruling out the possibility of None for mypy type checking.
+        assert updated_rights_model is not None
+
+        self.assertEqual(updated_rights_model.created_on, initial_created_on)
+        self.assertGreaterEqual(
+            updated_rights_model.last_updated, initial_last_updated
+        )
+
+    def test_creating_contribution_rights_sets_timestamps(self) -> None:
+        # Saving contribution rights for the first time must populate both
+        # created_on and last_updated on the new model.
+        user_services.allow_user_to_review_translation_in_language(
+            self.translator_id, 'hi'
+        )
+        rights_model = user_models.UserContributionRightsModel.get_by_id(
+            self.translator_id
+        )
+        # Ruling out the possibility of None for mypy type checking.
+        assert rights_model is not None
+
+        self.assertIsNotNone(rights_model.created_on)
+        self.assertIsNotNone(rights_model.last_updated)
+        self.assertGreaterEqual(
+            rights_model.last_updated, rights_model.created_on
+        )
+
+    def test_updating_contribution_rights_persists_all_fields(self) -> None:
+        # First save: only translation review rights in 'hi'.
+        user_services.allow_user_to_review_translation_in_language(
+            self.translator_id, 'hi'
+        )
+
+        # Update: add a second language and grant question-review rights, to
+        # verify that every field is written back via populate().
+        user_services.allow_user_to_review_translation_in_language(
+            self.translator_id, 'en'
+        )
+        user_services.allow_user_to_review_question(self.translator_id)
+
+        rights_model = user_models.UserContributionRightsModel.get_by_id(
+            self.translator_id
+        )
+        # Ruling out the possibility of None for mypy type checking.
+        assert rights_model is not None
+
+        self.assertEqual(
+            rights_model.can_review_translation_for_language_codes, ['en', 'hi']
+        )
+        self.assertTrue(rights_model.can_review_questions)
+
     def test_voiceover_review_assignement_adds_language_in_sorted_order(
         self,
     ) -> None:
