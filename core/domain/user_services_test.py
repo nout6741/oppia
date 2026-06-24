@@ -4532,6 +4532,148 @@ class UserContributionReviewRightsTests(test_utils.GenericTestBase):
         )
         self.assertTrue(rights_model.can_review_questions)
 
+    def test_created_on_stable_across_multiple_updates(self) -> None:
+        # created_on must remain constant across more than two updates.
+        user_services.allow_user_to_review_translation_in_language(
+            self.translator_id, 'hi'
+        )
+        model = user_models.UserContributionRightsModel.get_by_id(
+            self.translator_id
+        )
+        # Ruling out the possibility of None for mypy type checking.
+        assert model is not None
+        original_created_on = model.created_on
+        previous_last_updated = model.last_updated
+
+        for language in ('en', 'es', 'fr'):
+            user_services.allow_user_to_review_translation_in_language(
+                self.translator_id, language
+            )
+            model = user_models.UserContributionRightsModel.get_by_id(
+                self.translator_id
+            )
+            # Ruling out the possibility of None for mypy type checking.
+            assert model is not None
+            self.assertEqual(model.created_on, original_created_on)
+            self.assertGreaterEqual(model.last_updated, previous_last_updated)
+            previous_last_updated = model.last_updated
+
+    def test_revoking_all_rights_then_regrant_recreates_model(self) -> None:
+        user_services.allow_user_to_review_translation_in_language(
+            self.translator_id, 'hi'
+        )
+        self.assertIsNotNone(
+            user_models.UserContributionRightsModel.get_by_id(
+                self.translator_id
+            )
+        )
+
+        # Removing the reviewer deletes the model entirely.
+        user_services.remove_contribution_reviewer(self.translator_id)
+        self.assertIsNone(
+            user_models.UserContributionRightsModel.get_by_id(
+                self.translator_id
+            )
+        )
+
+        # Re-granting recreates a fresh model with valid timestamps.
+        user_services.allow_user_to_review_translation_in_language(
+            self.translator_id, 'en'
+        )
+        model = user_models.UserContributionRightsModel.get_by_id(
+            self.translator_id
+        )
+        self.assertIsNotNone(model)
+        # Ruling out the possibility of None for mypy type checking.
+        assert model is not None
+        self.assertIsNotNone(model.created_on)
+        self.assertIsNotNone(model.last_updated)
+
+    def test_voiceover_rights_update_preserves_created_on(self) -> None:
+        user_services.allow_user_to_review_voiceover_in_language(
+            self.voice_artist_id, 'hi'
+        )
+        model = user_models.UserContributionRightsModel.get_by_id(
+            self.voice_artist_id
+        )
+        # Ruling out the possibility of None for mypy type checking.
+        assert model is not None
+        created_on = model.created_on
+
+        user_services.allow_user_to_review_voiceover_in_language(
+            self.voice_artist_id, 'en'
+        )
+        model = user_models.UserContributionRightsModel.get_by_id(
+            self.voice_artist_id
+        )
+        # Ruling out the possibility of None for mypy type checking.
+        assert model is not None
+        self.assertEqual(model.created_on, created_on)
+        self.assertEqual(
+            model.can_review_voiceover_for_language_codes, ['en', 'hi']
+        )
+
+    def test_question_review_right_is_persisted(self) -> None:
+        user_services.allow_user_to_review_question(self.question_reviewer_id)
+        model = user_models.UserContributionRightsModel.get_by_id(
+            self.question_reviewer_id
+        )
+        # Ruling out the possibility of None for mypy type checking.
+        assert model is not None
+        self.assertTrue(model.can_review_questions)
+
+    def test_question_submission_right_is_persisted(self) -> None:
+        user_services.allow_user_to_submit_question(self.question_submitter_id)
+        model = user_models.UserContributionRightsModel.get_by_id(
+            self.question_submitter_id
+        )
+        # Ruling out the possibility of None for mypy type checking.
+        assert model is not None
+        self.assertTrue(model.can_submit_questions)
+
+    def test_all_four_rights_persisted_across_saves(self) -> None:
+        user_services.allow_user_to_review_translation_in_language(
+            self.translator_id, 'hi'
+        )
+        model = user_models.UserContributionRightsModel.get_by_id(
+            self.translator_id
+        )
+        # Ruling out the possibility of None for mypy type checking.
+        assert model is not None
+        created_on = model.created_on
+
+        user_services.allow_user_to_review_voiceover_in_language(
+            self.translator_id, 'en'
+        )
+        user_services.allow_user_to_review_question(self.translator_id)
+        user_services.allow_user_to_submit_question(self.translator_id)
+
+        model = user_models.UserContributionRightsModel.get_by_id(
+            self.translator_id
+        )
+        # Ruling out the possibility of None for mypy type checking.
+        assert model is not None
+        self.assertEqual(model.created_on, created_on)
+        self.assertEqual(
+            model.can_review_translation_for_language_codes, ['hi']
+        )
+        self.assertEqual(model.can_review_voiceover_for_language_codes, ['en'])
+        self.assertTrue(model.can_review_questions)
+        self.assertTrue(model.can_submit_questions)
+
+    def test_saved_rights_round_trip_through_get_user_contribution_rights(
+        self,
+    ) -> None:
+        user_services.allow_user_to_review_translation_in_language(
+            self.translator_id, 'hi'
+        )
+        user_services.allow_user_to_review_question(self.translator_id)
+        rights = user_services.get_user_contribution_rights(self.translator_id)
+        self.assertEqual(
+            rights.can_review_translation_for_language_codes, ['hi']
+        )
+        self.assertTrue(rights.can_review_questions)
+
     def test_voiceover_review_assignement_adds_language_in_sorted_order(
         self,
     ) -> None:
